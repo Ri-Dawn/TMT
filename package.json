@@ -1,0 +1,10 @@
+{
+  "name": "midnight-truth-booking",
+  "version": "1.0.0",
+  "private": true,
+  "dependencies": {
+    "@supabase/supabase-js": "^2.45.0",
+    "razorpay": "^2.9.4",
+    "stripe": "^16.8.0"
+  }
+}
