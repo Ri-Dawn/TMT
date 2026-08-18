@@ -15,6 +15,11 @@
     currency: guessCurrency(),
   };
 
+  // Holds a duration (minutes) requested via mtSelectReadingType() before the
+  // reading types have finished loading from the API, so the selection can be
+  // applied as soon as they arrive.
+  let pendingDurationSelect = null;
+
   function guessCurrency() {
     try {
       const tz = Intl.DateTimeFormat().resolvedOptions().timeZone || '';
@@ -30,6 +35,10 @@
     state.readingTypes = data.readingTypes || [];
     state.slots = data.slots || [];
     renderReadingTypes();
+    if (pendingDurationSelect !== null) {
+      selectReadingTypeByDuration(pendingDurationSelect);
+      pendingDurationSelect = null;
+    }
   }
 
   function el(id) {
@@ -52,12 +61,50 @@
 
     container.querySelectorAll('.mt-reading-type-btn').forEach((btn) => {
       btn.addEventListener('click', () => {
-        container.querySelectorAll('.mt-reading-type-btn').forEach((b) => b.classList.remove('active'));
-        btn.classList.add('active');
-        state.selectedReadingType = state.readingTypes.find((r) => r.id === btn.dataset.id);
-        renderSlots();
+        selectReadingTypeById(btn.dataset.id);
       });
     });
+  }
+
+  // Switching the reading type (even after a slot or the form was already
+  // showing) always clears the previously chosen slot — a slot's duration is
+  // tied to one reading type, so an old pick can't carry over to a new one.
+  function selectReadingTypeById(id) {
+    const container = el('mt-reading-types');
+    if (!container) return;
+    const btn = container.querySelector(`.mt-reading-type-btn[data-id="${id}"]`);
+    if (!btn) return;
+
+    container.querySelectorAll('.mt-reading-type-btn').forEach((b) => b.classList.remove('active'));
+    btn.classList.add('active');
+    state.selectedReadingType = state.readingTypes.find((r) => r.id === id);
+    state.selectedSlot = null;
+
+    const form = el('mt-details-form');
+    if (form) form.style.display = 'none';
+    const errorEl = el('mt-form-error');
+    if (errorEl) errorEl.textContent = '';
+
+    renderSlots();
+  }
+
+  // Called from anywhere on the site (a "Reserve This Reading" button, a
+  // signature-question card, etc.) to jump straight to a specific reading
+  // length and scroll the widget into view. durationMinutes must match a
+  // reading_type's duration_minutes in Supabase (15 / 25 / 40 by default).
+  function selectReadingTypeByDuration(durationMinutes) {
+    if (!state.readingTypes.length) {
+      // Data not loaded yet — remember the request and apply it once it is.
+      pendingDurationSelect = durationMinutes;
+      const widget = el('mt-booking-widget');
+      if (widget) widget.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      return;
+    }
+    const match = state.readingTypes.find((r) => r.duration_minutes === durationMinutes);
+    if (!match) return;
+    selectReadingTypeById(match.id);
+    const widget = el('mt-booking-widget');
+    if (widget) widget.scrollIntoView({ behavior: 'smooth', block: 'start' });
   }
 
   function renderSlots() {
@@ -211,6 +258,11 @@
     };
     document.body.appendChild(script);
   }
+
+  // Public API — other scripts on the page (CTA click handlers) call this to
+  // preselect a reading length and scroll to the widget. Safe to call before
+  // DOMContentLoaded or before availability has finished loading.
+  window.mtSelectReadingType = selectReadingTypeByDuration;
 
   document.addEventListener('DOMContentLoaded', () => {
     if (!el('mt-booking-widget')) return; // widget not on this page
