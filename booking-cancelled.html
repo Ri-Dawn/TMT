@@ -1,0 +1,89 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Reservation Not Completed — The Midnight Truth</title>
+<meta name="robots" content="noindex">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,500;0,600;1,300;1,400;1,500&family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --ink:#0B0B0E; --ink-2:#131318;
+    --blood:#7A1F2B; --blood-bright:#B23A4C;
+    --gold:#C69A5C; --gold-soft:#E8CC9C;
+    --bone:#F3EDE4; --bone-dim:#C9BFB0;
+    --glass-bg:linear-gradient(155deg, rgba(22,19,15,.78), rgba(10,9,8,.6) 55%, rgba(176,141,87,.05));
+    --glass-border:rgba(243,237,228,.16);
+    --serif:'Cormorant Garamond', Georgia, serif;
+    --sans:'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+    --ease:cubic-bezier(.16,.8,.24,1);
+  }
+  *{margin:0;padding:0;box-sizing:border-box;}
+  body{
+    background:radial-gradient(ellipse at 50% 20%, #1a1420 0%, var(--ink) 60%);
+    color:var(--bone); font-family:var(--sans); font-weight:300;
+    min-height:100vh; display:flex; align-items:center; justify-content:center;
+    padding:32px; -webkit-font-smoothing:antialiased; position:relative; overflow:hidden;
+  }
+  .grain{
+    position:fixed; inset:0; z-index:1; pointer-events:none; opacity:.045; mix-blend-mode:overlay;
+    background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  }
+  .card{
+    position:relative; z-index:2; max-width:520px; width:100%; text-align:center;
+    padding:56px 40px; border-radius:22px;
+    background:var(--glass-bg); backdrop-filter:blur(22px) saturate(150%);
+    -webkit-backdrop-filter:blur(22px) saturate(150%);
+    border:1px solid var(--glass-border);
+    box-shadow:inset 0 1px 0 rgba(255,255,255,.12), inset 0 -12px 24px -18px rgba(0,0,0,.5), 0 30px 60px -20px rgba(0,0,0,.6);
+    animation:riseFade 1s var(--ease) forwards;
+  }
+  @keyframes riseFade{from{opacity:0; transform:translateY(16px);} to{opacity:1; transform:translateY(0);}}
+  .glyph{
+    font-family:var(--serif); font-style:italic; font-size:40px; color:var(--gold-soft);
+    margin-bottom:18px; display:block;
+  }
+  .eyebrow{
+    font-size:11px; letter-spacing:.32em; text-transform:uppercase; color:var(--gold); font-weight:500; margin-bottom:18px;
+  }
+  h1{
+    font-family:var(--serif); font-weight:400; font-size:clamp(28px,5vw,38px);
+    line-height:1.15; letter-spacing:.01em; text-transform:uppercase; color:var(--bone); margin-bottom:16px;
+  }
+  .quote{
+    font-family:var(--serif); font-style:italic; font-size:19px; color:var(--gold-soft);
+    line-height:1.4; margin-bottom:26px;
+  }
+  p.body{ color:var(--bone-dim); font-size:15px; line-height:1.7; margin-bottom:34px; }
+  .btn{
+    display:inline-flex; align-items:center; gap:10px;
+    font-size:11.5px; letter-spacing:.15em; text-transform:uppercase; font-weight:500;
+    padding:14px 28px; border-radius:100px; cursor:pointer;
+    background:linear-gradient(155deg, rgba(255,255,255,.08), rgba(255,255,255,.02));
+    color:var(--bone); border:1px solid var(--glass-border);
+    box-shadow:inset 0 1px 0 rgba(255,255,255,.1);
+    backdrop-filter:blur(14px);
+    transition:transform .3s var(--ease), box-shadow .3s var(--ease), border-color .3s var(--ease);
+  }
+  .btn:hover{
+    border-color:rgba(176,141,87,.5); transform:translateY(-2px);
+    box-shadow:0 12px 30px -16px rgba(176,141,87,.4), inset 0 1px 0 rgba(255,255,255,.15);
+  }
+  .hairline{ width:48px; height:1px; background:linear-gradient(90deg, transparent, var(--gold), transparent); margin:26px auto; opacity:.5; }
+</style>
+</head>
+<body>
+  <div class="grain"></div>
+  <div class="card">
+    <span class="glyph">☾</span>
+    <div class="eyebrow">Reservation Not Completed</div>
+    <h1>No Payment Was Made</h1>
+    <p class="quote">The cards will keep. Come back when you're ready.</p>
+    <div class="hairline"></div>
+    <p class="body">Your slot hold has been released so it's free for someone else. Whenever the timing feels right, reserve your reading again — the practice will be here.</p>
+    <a href="/#reserve" class="btn">Back to The Midnight Truth</a>
+  </div>
+</body>
+</html>
