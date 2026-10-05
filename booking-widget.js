@@ -225,7 +225,21 @@
       '.mt-next{display:block;margin:0 auto 18px;padding:12px 22px;border-radius:100px;border:1px solid var(--gold,#b08d57);background:rgba(176,141,87,.12);color:var(--bone,#ece6d8);font:inherit;cursor:pointer}.mt-next b{color:var(--gold-soft,#d9bb85);font-weight:500;margin-left:6px}' +
       '.mt-days{display:flex;gap:6px;overflow-x:auto;padding:4px 2px 12px;justify-content:center;flex-wrap:wrap}.mt-day{font:inherit;font-size:11.5px;letter-spacing:.03em;padding:8px 12px;border-radius:100px;border:1px solid rgba(176,141,87,.25);background:transparent;color:var(--bone-dim,#a9a191);cursor:pointer;white-space:nowrap}.mt-day.active{border-color:var(--gold,#b08d57);color:var(--bone,#ece6d8);background:rgba(176,141,87,.12)}' +
       '.mt-tz{font-size:12px;opacity:.65;margin:14px 0 0}.mt-summary{font-size:14px;line-height:1.7;margin:0 0 14px;color:var(--bone,#ece6d8)}.mt-summary small{opacity:.7}';
+    css.textContent += '.mt-mode{text-align:left;margin:6px 0 14px}.mt-mode p{margin:0 0 6px;font-size:14px;opacity:.85}.mt-mode label{display:flex;align-items:center;padding:7px 0;cursor:pointer;font-size:14px}.mt-mode input[type=radio]{width:auto!important;margin:0 10px 0 0!important;padding:0!important;accent-color:#b08d57}';
     document.head.appendChild(css);
+    const formEl = el('mt-details-form');
+    if (formEl && !el('mt-ig')) {
+      const box = document.createElement('div');
+      box.className = 'mt-mode';
+      box.innerHTML = '<p>How would you like to speak?</p>' +
+        '<label><input type="radio" name="mt-mode" value="instagram" checked>Instagram audio call</label>' +
+        '<label><input type="radio" name="mt-mode" value="meet">Google Meet, audio only</label>' +
+        '<input type="text" id="mt-ig" placeholder="Your Instagram name" autocomplete="off" />';
+      formEl.insertBefore(box, el('mt-form-error'));
+      box.querySelectorAll('input[name="mt-mode"]').forEach((r) => r.addEventListener('change', () => {
+        el('mt-ig').style.display = r.value === 'instagram' && r.checked ? 'block' : (r.checked ? 'none' : el('mt-ig').style.display);
+      }));
+    }
     const types = el('mt-reading-types');
     if (types && !document.querySelector('.mt-cur-row')) {
       const row = document.createElement('div');
@@ -258,10 +272,17 @@
       client_email: el('mt-email').value.trim(),
       client_phone: el('mt-phone').value.trim(),
       currency: billedCur(),
+      contact_mode: (document.querySelector('input[name="mt-mode"]:checked') || {}).value || 'instagram',
+      instagram_handle: (el('mt-ig') ? el('mt-ig').value.trim() : ''),
     };
 
     if (!payload.client_name || !payload.client_email || !payload.client_phone) {
       errorEl.textContent = 'Please fill in your name, email, and phone number.';
+      return;
+    }
+
+    if (payload.contact_mode === 'instagram' && !payload.instagram_handle) {
+      errorEl.textContent = 'Please add your Instagram name so we can call you there.';
       return;
     }
 
