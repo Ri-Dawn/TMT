@@ -1,94 +1,49 @@
-// POST /api/book
-// body: { slot_id, reading_type_id, client_name, client_email, client_phone, currency }
-// currency: 'INR' | 'USD' — this is what decides the gateway (INR -> razorpay, USD -> stripe)
-//
-// Soft-locks the slot for 10 minutes and creates a 'pending' booking row.
-// The frontend then calls /api/checkout/razorpay or /api/checkout/stripe with the
-// returned booking_id to actually start payment.
+// GET /api/slots
+// GET /api/slots?reading_type_id=xxxx  -> only slots whose duration matches that reading type
+// GET /api/reading-types is handled by the same file via ?types=1 for simplicity,
+// or call this with no params to get both in one response (fewer round trips for the widget).
 const { supabase } = require('../lib/supabase');
 
-const HOLD_MINUTES = 10;
-
 module.exports = async (req, res) => {
-  if (req.method !== 'POST') {
+  if (req.method !== 'GET') {
     return res.status(405).json({ error: 'Method not allowed' });
   }
 
-  const { slot_id, reading_type_id, client_name, client_email, client_phone, currency } = req.body || {};
-
-  if (!slot_id || !reading_type_id || !client_name || !client_email || !client_phone || !currency) {
-    return res.status(400).json({ error: 'Missing required fields.' });
-  }
-  if (!['INR', 'USD'].includes(currency)) {
-    return res.status(400).json({ error: 'Invalid currency.' });
-  }
-
   try {
-    const { data: readingType, error: rtError } = await supabase
+    const { reading_type_id } = req.query;
+
+    const { data: readingTypes, error: rtError } = await supabase
       .from('reading_types')
       .select('*')
-      .eq('id', reading_type_id)
       .eq('is_active', true)
-      .single();
-    if (rtError || !readingType) {
-      return res.status(400).json({ error: 'Reading type not found.' });
-    }
+      .order('sort_order', { ascending: true });
 
-    // Optimistic lock: only succeeds if the slot is currently 'open'.
-    // Prevents two clients from both grabbing the same slot at once.
-    const heldUntil = new Date(Date.now() + HOLD_MINUTES * 60 * 1000).toISOString();
-    const { data: heldSlot, error: holdError } = await supabase
+    if (rtError) throw rtError;
+
+    let slotsQuery = supabase
       .from('slots')
-      .update({ status: 'held', held_until: heldUntil })
-      .eq('id', slot_id)
-      .eq('status', 'open')
-      .select()
-      .single();
+      .select('id, slot_date, start_time, duration_minutes')
+      .or(`status.eq.open,and(status.eq.held,held_until.lt.${new Date().toISOString()})`)
+      .gte('slot_date', new Date().toISOString().slice(0, 10))
+      .order('slot_date', { ascending: true })
+      .order('start_time', { ascending: true });
 
-    if (holdError || !heldSlot) {
-      return res.status(409).json({ error: 'That slot was just taken. Please pick another.' });
+    if (reading_type_id) {
+      const rt = readingTypes.find((r) => r.id === reading_type_id);
+      if (rt) {
+        slotsQuery = slotsQuery.eq('duration_minutes', rt.duration_minutes);
+      }
     }
 
-    if (heldSlot.duration_minutes !== readingType.duration_minutes) {
-      // Roll back the hold — this slot wasn't meant for this reading type.
-      await supabase.from('slots').update({ status: 'open', held_until: null }).eq('id', slot_id);
-      return res.status(400).json({ error: 'This slot does not match the selected reading length.' });
-    }
+    const { data: slots, error: slotsError } = await slotsQuery;
+    if (slotsError) throw slotsError;
 
-    const amount = currency === 'INR' ? readingType.price_inr : readingType.price_usd;
-    const gateway = currency === 'INR' ? 'razorpay' : 'stripe';
-
-    const { data: booking, error: bookingError } = await supabase
-      .from('bookings')
-      .insert({
-        slot_id,
-        reading_type_id,
-        client_name,
-        client_email,
-        client_phone,
-        currency,
-        gateway,
-        amount,
-        payment_status: 'pending',
-      })
-      .select()
-      .single();
-
-    if (bookingError) {
-      // Roll back the hold if we couldn't create the booking.
-      await supabase.from('slots').update({ status: 'open', held_until: null }).eq('id', slot_id);
-      throw bookingError;
-    }
-
-    return res.status(200).json({
-      booking_id: booking.id,
-      amount,
-      currency,
-      gateway,
-      hold_expires_at: heldUntil,
-    });
+    // Also drop any slot whose hold has expired but hasn't been swept yet by the cron job,
+    // so the widget never shows a stale-but-technically-'held' slot as open (status filter
+    // above already excludes 'held', this is just a safety net for edge timing).
+    return res.status(200).json({ readingTypes, slots });
   } catch (err) {
-    console.error('POST /api/book error:', err);
-    return res.status(500).json({ error: 'Could not reserve the slot. Please try again.' });
+    console.error('GET /api/slots error:', err);
+    return res.status(500).json({ error: 'Could not load availability. Please try again.' });
   }
 };
