@@ -12,13 +12,44 @@
     slots: [],
     selectedReadingType: null,
     selectedSlot: null,
-    currency: guessCurrency(),
+    cur: siteCurrency(),
+    dayKey: null,
   };
 
   // Holds a duration (minutes) requested via mtSelectReadingType() before the
   // reading types have finished loading from the API, so the selection can be
   // applied as soon as they arrive.
   let pendingDurationSelect = null;
+
+  const SYM = { inr: '₹', usd: '$', eur: '€', gbp: '£' };
+  const PRICES = { 15: { inr: 999, usd: 12, eur: 10, gbp: 9 }, 25: { inr: 1555, usd: 18, eur: 16, gbp: 14 }, 40: { inr: 3111, usd: 36, eur: 31, gbp: 27 } };
+  const DAYS_SHOWN = 7;
+  const TZ = (function () { try { return Intl.DateTimeFormat().resolvedOptions().timeZone || 'your timezone'; } catch (e) { return 'your timezone'; } })();
+
+  function siteCurrency() {
+    const a = document.querySelector('.cur-btn.active');
+    return (a && a.dataset.cur) || 'inr';
+  }
+  const billedCur = () => (state.cur === 'inr' ? 'INR' : 'USD');
+  function priceFor(rt, cur) {
+    const p = PRICES[rt.duration_minutes];
+    if (p && p[cur] != null) return p[cur];
+    return cur === 'inr' ? rt.price_inr : rt.price_usd;
+  }
+  const money = (rt, cur) => SYM[cur] + Number(priceFor(rt, cur)).toLocaleString('en-US');
+  // What the visitor will really be charged (the checkout only bills in INR or USD).
+  const billedText = (rt) => (state.cur === 'inr' ? money(rt, 'inr') : money(rt, 'usd') + ' USD');
+  const payLabel = () => (state.selectedReadingType ? 'Reserve & Pay ' + billedText(state.selectedReadingType) : 'Reserve & Pay');
+  // Slots are stored in India time; turn them into the visitor's own clock.
+  const slotDate = (s) => new Date(s.slot_date + 'T' + s.start_time + '+05:30');
+  const dayKey = (d) => d.toLocaleDateString('en-CA');
+  const timeLabel = (d) => d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+  function dayLabel(d) {
+    const k = dayKey(d), now = new Date(), tom = new Date(now.getTime() + 864e5);
+    if (k === dayKey(now)) return 'Tonight';
+    if (k === dayKey(tom)) return 'Tomorrow';
+    return d.toLocaleDateString([], { weekday: 'short', day: 'numeric', month: 'short' });
+  }
 
   function guessCurrency() {
     try {
@@ -54,7 +85,7 @@
         <button type="button" class="mt-reading-type-btn" data-id="${rt.id}">
           <span class="mt-rt-label">${rt.label}</span>
           <span class="mt-rt-meta">${rt.question_range} · ${rt.duration_minutes} min</span>
-          <span class="mt-rt-price">${state.currency === 'INR' ? '₹' + rt.price_inr : '$' + rt.price_usd}</span>
+          <span class="mt-rt-price">${money(rt, state.cur)}</span>
         </button>`
       )
       .join('');
@@ -110,51 +141,91 @@
   function renderSlots() {
     const container = el('mt-slots');
     if (!container || !state.selectedReadingType) return;
+    const rt = state.selectedReadingType;
+    const items = state.slots
+      .filter((s) => s.duration_minutes === rt.duration_minutes)
+      .map((s) => ({ s, d: slotDate(s) }))
+      .filter((x) => x.d.getTime() > Date.now())
+      .sort((x, y) => x.d - y.d);
 
-    const matching = state.slots.filter((s) => s.duration_minutes === state.selectedReadingType.duration_minutes);
-
-    if (matching.length === 0) {
-      container.innerHTML = `<p class="mt-empty">No open slots for this reading length right now — check back soon or message us on Instagram.</p>`;
+    if (!items.length) {
+      container.innerHTML = '<p class="mt-empty">All of this week\'s sessions are held. New nights open every day: check back soon, or message us on Instagram.</p>';
       return;
     }
+    const byDay = {};
+    items.forEach((x) => { (byDay[dayKey(x.d)] = byDay[dayKey(x.d)] || []).push(x); });
+    const days = Object.keys(byDay).slice(0, DAYS_SHOWN);
+    if (!state.dayKey || !byDay[state.dayKey] || !days.includes(state.dayKey)) state.dayKey = days[0];
+    const first = items[0];
 
-    // Group by date for a cleaner picker
-    const byDate = {};
-    matching.forEach((s) => {
-      byDate[s.slot_date] = byDate[s.slot_date] || [];
-      byDate[s.slot_date].push(s);
-    });
+    container.innerHTML =
+      '<button type="button" class="mt-next" data-id="' + first.s.id + '">Next available <b>' + dayLabel(first.d) + ' · ' + timeLabel(first.d) + '</b></button>' +
+      '<div class="mt-days">' + days.map((k) => '<button type="button" class="mt-day' + (k === state.dayKey ? ' active' : '') + '" data-k="' + k + '">' + dayLabel(byDay[k][0].d) + '</button>').join('') + '</div>' +
+      '<div class="mt-slot-times">' + byDay[state.dayKey].map((x) => '<button type="button" class="mt-slot-btn' + (state.selectedSlot && state.selectedSlot.id === x.s.id ? ' active' : '') + '" data-id="' + x.s.id + '">' + timeLabel(x.d) + '</button>').join('') + '</div>' +
+      '<p class="mt-tz">Times shown in your timezone (' + TZ.replace(/_/g, ' ') + ')</p>';
 
-    container.innerHTML = Object.entries(byDate)
-      .map(
-        ([date, slots]) => `
-        <div class="mt-slot-day">
-          <div class="mt-slot-date">${new Date(date + 'T00:00:00').toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' })}</div>
-          <div class="mt-slot-times">
-            ${slots
-              .map((s) => `<button type="button" class="mt-slot-btn" data-id="${s.id}">${formatTime(s.start_time)}</button>`)
-              .join('')}
-          </div>
-        </div>`
-      )
-      .join('');
-
-    container.querySelectorAll('.mt-slot-btn').forEach((btn) => {
-      btn.addEventListener('click', () => {
-        container.querySelectorAll('.mt-slot-btn').forEach((b) => b.classList.remove('active'));
-        btn.classList.add('active');
-        state.selectedSlot = matching.find((s) => s.id === btn.dataset.id);
-        el('mt-details-form').style.display = 'block';
-        el('mt-details-form').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-      });
-    });
+    const pick = (id) => {
+      state.selectedSlot = items.find((x) => x.s.id === id).s;
+      state.dayKey = dayKey(slotDate(state.selectedSlot));
+      renderSlots();
+      showForm();
+    };
+    container.querySelector('.mt-next').addEventListener('click', () => pick(first.s.id));
+    container.querySelectorAll('.mt-day').forEach((b) => b.addEventListener('click', () => { state.dayKey = b.dataset.k; renderSlots(); }));
+    container.querySelectorAll('.mt-slot-btn').forEach((b) => b.addEventListener('click', () => pick(b.dataset.id)));
   }
 
-  function formatTime(t) {
-    const [h, m] = t.split(':');
-    const date = new Date();
-    date.setHours(parseInt(h, 10), parseInt(m, 10));
-    return date.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
+  function showForm() {
+    const form = el('mt-details-form');
+    if (!form || !state.selectedSlot) return;
+    let sum = el('mt-summary');
+    if (!sum) {
+      sum = document.createElement('p');
+      sum.id = 'mt-summary';
+      sum.className = 'mt-summary';
+      form.insertBefore(sum, el('mt-form-error'));
+    }
+    const rt = state.selectedReadingType, d = slotDate(state.selectedSlot);
+    const approx = state.cur === 'eur' || state.cur === 'gbp' ? '<br><small>' + money(rt, state.cur) + ' shown for reference. You will be charged ' + billedText(rt) + '.</small>' : '';
+    sum.innerHTML = '<b>' + rt.label + '</b> · ' + dayLabel(d) + ', ' + timeLabel(d) + ' · <b>' + billedText(rt) + '</b>' + approx + '<br><small>We hold your time for 10 minutes while you pay.</small>';
+    const btn = el('mt-submit-btn');
+    if (btn && !btn.disabled) btn.textContent = payLabel();
+    form.style.display = 'block';
+    form.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  }
+
+  // Keep the widget in step with the site's currency buttons (and let visitors switch right here).
+  function setCurrency(cur) {
+    state.cur = cur;
+    document.querySelectorAll('.mt-cur').forEach((b) => b.classList.toggle('active', b.dataset.cur === cur));
+    renderReadingTypes();
+    const active = el('mt-reading-types') && el('mt-reading-types').querySelector('.mt-reading-type-btn[data-id="' + (state.selectedReadingType && state.selectedReadingType.id) + '"]');
+    if (active) active.classList.add('active');
+    if (state.selectedSlot) showForm();
+  }
+  function injectUi() {
+    const css = document.createElement('style');
+    css.textContent = '.mt-cur-row{display:flex;gap:8px;justify-content:center;margin:0 0 18px}.mt-cur{font:inherit;font-size:11px;letter-spacing:.08em;padding:7px 14px;border-radius:100px;border:1px solid rgba(176,141,87,.3);background:transparent;color:var(--bone-dim,#a9a191);cursor:pointer}.mt-cur.active{background:linear-gradient(155deg,var(--gold-soft,#d9bb85),var(--gold,#b08d57));color:var(--ink,#0d0d12);font-weight:500}' +
+      '.mt-next{display:block;margin:0 auto 18px;padding:12px 22px;border-radius:100px;border:1px solid var(--gold,#b08d57);background:rgba(176,141,87,.12);color:var(--bone,#ece6d8);font:inherit;cursor:pointer}.mt-next b{color:var(--gold-soft,#d9bb85);font-weight:500;margin-left:6px}' +
+      '.mt-days{display:flex;gap:8px;overflow-x:auto;padding:4px 2px 12px;justify-content:center;flex-wrap:wrap}.mt-day{font:inherit;font-size:12px;letter-spacing:.06em;padding:9px 16px;border-radius:100px;border:1px solid rgba(176,141,87,.25);background:transparent;color:var(--bone-dim,#a9a191);cursor:pointer;white-space:nowrap}.mt-day.active{border-color:var(--gold,#b08d57);color:var(--bone,#ece6d8);background:rgba(176,141,87,.12)}' +
+      '.mt-tz{font-size:12px;opacity:.65;margin:14px 0 0}.mt-summary{font-size:14px;line-height:1.7;margin:0 0 14px;color:var(--bone,#ece6d8)}.mt-summary small{opacity:.7}';
+    document.head.appendChild(css);
+    const types = el('mt-reading-types');
+    if (types && !document.querySelector('.mt-cur-row')) {
+      const row = document.createElement('div');
+      row.className = 'mt-cur-row';
+      row.innerHTML = ['inr', 'usd', 'eur', 'gbp'].map((c) => '<button type="button" class="mt-cur' + (c === state.cur ? ' active' : '') + '" data-cur="' + c + '">' + SYM[c] + ' ' + c.toUpperCase() + '</button>').join('');
+      types.parentNode.insertBefore(row, types);
+      row.querySelectorAll('.mt-cur').forEach((b) => b.addEventListener('click', () => {
+        const siteBtn = document.querySelector('.cur-btn[data-cur="' + b.dataset.cur + '"]');
+        if (siteBtn) siteBtn.click(); // moves the whole site to this currency
+        setCurrency(b.dataset.cur);
+      }));
+    }
+    document.addEventListener('click', (e) => { const b = e.target.closest && e.target.closest('.cur-btn'); if (b) setCurrency(b.dataset.cur); });
+    document.addEventListener('change', (e) => { if (e.target.classList && e.target.classList.contains('cur-select-mobile')) setCurrency(e.target.value); });
+    // First visit from outside India: open in dollars so nothing shows in rupees by surprise.
+    if (!/Calcutta|Kolkata/.test(TZ) && state.cur === 'inr') { const u = document.querySelector('.cur-btn[data-cur="usd"]'); if (u) u.click(); setCurrency('usd'); }
   }
 
   async function submitBooking(e) {
@@ -170,7 +241,7 @@
       client_name: el('mt-name').value.trim(),
       client_email: el('mt-email').value.trim(),
       client_phone: el('mt-phone').value.trim(),
-      currency: state.currency,
+      currency: billedCur(),
     };
 
     if (!payload.client_name || !payload.client_email || !payload.client_phone) {
@@ -193,7 +264,7 @@
       if (!bookRes.ok) {
         errorEl.textContent = booking.error || 'Something went wrong. Please try another slot.';
         submitBtn.disabled = false;
-        submitBtn.textContent = 'Reserve & Pay';
+        submitBtn.textContent = payLabel();
         loadAvailability(); // refresh in case the slot was taken
         return;
       }
@@ -223,7 +294,7 @@
       console.error(err);
       errorEl.textContent = 'Something went wrong. Please try again.';
       submitBtn.disabled = false;
-      submitBtn.textContent = 'Reserve & Pay';
+      submitBtn.textContent = payLabel();
     }
   }
 
@@ -250,7 +321,7 @@
           ondismiss: function () {
             const submitBtn = el('mt-submit-btn');
             submitBtn.disabled = false;
-            submitBtn.textContent = 'Reserve & Pay';
+            submitBtn.textContent = payLabel();
           },
         },
       });
@@ -266,6 +337,7 @@
 
   document.addEventListener('DOMContentLoaded', () => {
     if (!el('mt-booking-widget')) return; // widget not on this page
+    injectUi();
     loadAvailability();
     const form = el('mt-details-form');
     if (form) form.addEventListener('submit', submitBooking);
