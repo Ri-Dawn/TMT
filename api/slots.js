@@ -23,7 +23,7 @@ module.exports = async (req, res) => {
     let slotsQuery = supabase
       .from('slots')
       .select('id, slot_date, start_time, duration_minutes')
-      .eq('status', 'open')
+      .or(`status.eq.open,and(status.eq.held,held_until.lt.${new Date().toISOString()})`)
       .gte('slot_date', new Date().toISOString().slice(0, 10))
       .order('slot_date', { ascending: true })
       .order('start_time', { ascending: true });
