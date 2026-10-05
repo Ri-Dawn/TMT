@@ -26,6 +26,8 @@
   const DAYS_SHOWN = 7;
   const TZ = (function () { try { return Intl.DateTimeFormat().resolvedOptions().timeZone || 'your timezone'; } catch (e) { return 'your timezone'; } })();
 
+  const TZ_NAME = /Calcutta|Kolkata/.test(TZ) ? 'India Standard Time' : TZ.replace(/_/g, ' ');
+
   function siteCurrency() {
     const a = document.querySelector('.cur-btn.active');
     return (a && a.dataset.cur) || 'inr';
@@ -39,7 +41,7 @@
   const money = (rt, cur) => SYM[cur] + Number(priceFor(rt, cur)).toLocaleString('en-US');
   // What the visitor will really be charged (the checkout only bills in INR or USD).
   const billedText = (rt) => (state.cur === 'inr' ? money(rt, 'inr') : money(rt, 'usd') + ' USD');
-  const payLabel = () => (state.selectedReadingType ? 'Reserve & Pay ' + billedText(state.selectedReadingType) : 'Reserve & Pay');
+  const payLabel = () => 'Reserve my hour';
   // Slots are stored in India time; turn them into the visitor's own clock.
   const slotDate = (s) => new Date(s.slot_date + 'T' + s.start_time + '+05:30');
   const dayKey = (d) => d.toLocaleDateString('en-CA');
@@ -117,6 +119,7 @@
     if (errorEl) errorEl.textContent = '';
 
     renderSlots();
+    refreshNote();
   }
 
   // Called from anywhere on the site (a "Reserve This Reading" button, a
@@ -162,7 +165,7 @@
       '<button type="button" class="mt-next" data-id="' + first.s.id + '">Next available <b>' + dayLabel(first.d) + ' · ' + timeLabel(first.d) + '</b></button>' +
       '<div class="mt-days">' + days.map((k) => '<button type="button" class="mt-day' + (k === state.dayKey ? ' active' : '') + '" data-k="' + k + '">' + dayLabel(byDay[k][0].d) + '</button>').join('') + '</div>' +
       '<div class="mt-slot-times">' + byDay[state.dayKey].map((x) => '<button type="button" class="mt-slot-btn' + (state.selectedSlot && state.selectedSlot.id === x.s.id ? ' active' : '') + '" data-id="' + x.s.id + '">' + timeLabel(x.d) + '</button>').join('') + '</div>' +
-      '<p class="mt-tz">Times shown in your timezone (' + TZ.replace(/_/g, ' ') + ')</p>';
+      '<p class="mt-tz">Times shown in your timezone (' + TZ_NAME + ')</p>';
 
     const pick = (id) => {
       state.selectedSlot = items.find((x) => x.s.id === id).s;
@@ -186,8 +189,8 @@
       form.insertBefore(sum, el('mt-form-error'));
     }
     const rt = state.selectedReadingType, d = slotDate(state.selectedSlot);
-    const approx = state.cur === 'eur' || state.cur === 'gbp' ? '<br><small>' + money(rt, state.cur) + ' shown for reference. You will be charged ' + billedText(rt) + '.</small>' : '';
-    sum.innerHTML = '<b>' + rt.label + '</b> · ' + dayLabel(d) + ', ' + timeLabel(d) + ' · <b>' + billedText(rt) + '</b>' + approx + '<br><small>We hold your time for 10 minutes while you pay.</small>';
+    const approx = state.cur === 'eur' || state.cur === 'gbp' ? '<br><small>' + money(rt, state.cur) + ' shown for reference · final amount ' + billedText(rt) + '</small>' : '';
+    sum.innerHTML = '<b>' + rt.label + '</b> · ' + dayLabel(d) + ', ' + timeLabel(d) + '<br>' + billedText(rt) + approx + '<br><small>Your hour is held for you for 10 minutes while you complete your reservation.</small>';
     const btn = el('mt-submit-btn');
     if (btn && !btn.disabled) btn.textContent = payLabel();
     form.style.display = 'block';
@@ -202,12 +205,25 @@
     const active = el('mt-reading-types') && el('mt-reading-types').querySelector('.mt-reading-type-btn[data-id="' + (state.selectedReadingType && state.selectedReadingType.id) + '"]');
     if (active) active.classList.add('active');
     if (state.selectedSlot) showForm();
+    refreshNote();
+  }
+  function refreshNote() {
+    const n = document.getElementById('selectionNote'), rt = state.selectedReadingType;
+    if (!n || !n.dataset.q || !rt) return;
+    if (n.classList.contains('show') && Number(n.dataset.dur) === rt.duration_minutes) {
+      n.textContent = 'Selected: ' + n.dataset.q + ' — ' + billedText(rt) + '. Choose your time below.';
+    } else {
+      n.classList.remove('show');
+      if (n.dataset.def) n.textContent = n.dataset.def;
+    }
   }
   function injectUi() {
+    const note = document.getElementById('selectionNote');
+    if (note && !note.dataset.def) note.dataset.def = note.textContent;
     const css = document.createElement('style');
     css.textContent = '.mt-cur-row{display:flex;gap:8px;justify-content:center;margin:0 0 18px}.mt-cur{font:inherit;font-size:11px;letter-spacing:.08em;padding:7px 14px;border-radius:100px;border:1px solid rgba(176,141,87,.3);background:transparent;color:var(--bone-dim,#a9a191);cursor:pointer}.mt-cur.active{background:linear-gradient(155deg,var(--gold-soft,#d9bb85),var(--gold,#b08d57));color:var(--ink,#0d0d12);font-weight:500}' +
       '.mt-next{display:block;margin:0 auto 18px;padding:12px 22px;border-radius:100px;border:1px solid var(--gold,#b08d57);background:rgba(176,141,87,.12);color:var(--bone,#ece6d8);font:inherit;cursor:pointer}.mt-next b{color:var(--gold-soft,#d9bb85);font-weight:500;margin-left:6px}' +
-      '.mt-days{display:flex;gap:8px;overflow-x:auto;padding:4px 2px 12px;justify-content:center;flex-wrap:wrap}.mt-day{font:inherit;font-size:12px;letter-spacing:.06em;padding:9px 16px;border-radius:100px;border:1px solid rgba(176,141,87,.25);background:transparent;color:var(--bone-dim,#a9a191);cursor:pointer;white-space:nowrap}.mt-day.active{border-color:var(--gold,#b08d57);color:var(--bone,#ece6d8);background:rgba(176,141,87,.12)}' +
+      '.mt-days{display:flex;gap:6px;overflow-x:auto;padding:4px 2px 12px;justify-content:center;flex-wrap:wrap}.mt-day{font:inherit;font-size:11.5px;letter-spacing:.03em;padding:8px 12px;border-radius:100px;border:1px solid rgba(176,141,87,.25);background:transparent;color:var(--bone-dim,#a9a191);cursor:pointer;white-space:nowrap}.mt-day.active{border-color:var(--gold,#b08d57);color:var(--bone,#ece6d8);background:rgba(176,141,87,.12)}' +
       '.mt-tz{font-size:12px;opacity:.65;margin:14px 0 0}.mt-summary{font-size:14px;line-height:1.7;margin:0 0 14px;color:var(--bone,#ece6d8)}.mt-summary small{opacity:.7}';
     document.head.appendChild(css);
     const types = el('mt-reading-types');
@@ -251,7 +267,7 @@
 
     const submitBtn = el('mt-submit-btn');
     submitBtn.disabled = true;
-    submitBtn.textContent = 'Reserving your slot…';
+    submitBtn.textContent = 'Holding your hour…';
 
     try {
       const bookRes = await fetch('/api/book', {
@@ -279,7 +295,7 @@
         if (checkout.checkout_url) {
           window.location.href = checkout.checkout_url;
         } else {
-          errorEl.textContent = 'Could not start payment. Please try again.';
+          errorEl.textContent = 'We could not complete that just now. Please try once more.';
         }
       } else {
         const checkoutRes = await fetch('/api/checkout/razorpay', {
