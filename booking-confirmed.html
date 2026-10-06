@@ -79,7 +79,19 @@
     <p class="quote">The cards are waiting. So is the truth.</p>
     <div class="hairline"></div>
     <p class="body">Your payment went through and your slot is locked in. A confirmation with your session details is on its way to your email, along with a reminder — and your Google Meet link — before we begin.</p>
-    <a href="/" class="btn">Return to The Midnight Truth</a>
+    <div id="next" class="body" style="margin-top:22px"></div>
+    <a href="/" class="btn" style="margin-top:18px">Return to The Midnight Truth</a>
+    <script>
+      try {
+        const last = JSON.parse(localStorage.getItem('mtLast') || 'null');
+        const box = document.getElementById('next');
+        if (last && last.mode === 'instagram') {
+          box.innerHTML = 'One quiet last step. Send us a message on Instagram with your code <b>' + last.code + '</b>, so we know it is you. We will call you there at your hour.<br><br><a class="btn" href="https://ig.me/m/midnighttruthco" target="_blank" rel="noopener">Message us on Instagram</a>';
+        } else if (last && last.mode === 'meet') {
+          box.innerHTML = 'Your Google Meet link: <a href="https://meet.google.com/bct-sjzt-kov" style="color:inherit">meet.google.com/bct-sjzt-kov</a><br>Your reference: <b>' + last.code + '</b>';
+        }
+      } catch (e) {}
+    </script>
   </div>
 </body>
 </html>
