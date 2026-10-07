@@ -1,0 +1,163 @@
+<!DOCTYPE html>
+<html lang="en"><head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="robots" content="noindex, nofollow">
+<meta name="theme-color" content="#0d0d12">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Midnight Desk">
+<link rel="manifest" href="/manifest.webmanifest">
+<link rel="apple-touch-icon" href="/desk-icon-180.png">
+<link rel="icon" type="image/png" href="/desk-icon-192.png">
+<title>The Midnight Desk</title>
+<style>
+:root{--ink:#0d0d12;--panel:#15151d;--bone:#ece6d8;--dim:#a9a191;--gold:#b08d57;--soft:#d9bb85;--line:rgba(176,141,87,.28)}
+*{box-sizing:border-box}body{margin:0;background:var(--ink);color:var(--bone);font:15px/1.5 -apple-system,"Helvetica Neue",Arial,sans-serif;padding:env(safe-area-inset-top) 0 40px}
+.wrap{max-width:640px;margin:0 auto;padding:0 16px}
+h1{font:400 26px Georgia,serif;margin:22px 0 4px}.sub{color:var(--dim);font-size:13px;margin:0 0 18px}
+.tabs{display:flex;gap:8px;margin:0 0 18px;position:sticky;top:0;background:var(--ink);padding:10px 0;z-index:2}
+button,input,select{font:inherit;color:inherit}
+.tab,.btn,.chip{border:1px solid var(--line);background:transparent;border-radius:100px;padding:9px 16px;cursor:pointer}
+.tab.on,.chip.on{border-color:var(--gold);background:rgba(176,141,87,.14)}.btn.gold{background:linear-gradient(155deg,var(--soft),var(--gold));color:var(--ink);border-color:var(--gold);font-weight:600}
+.btn.sm,.chip{padding:6px 12px;font-size:13px}.btn.quiet{color:var(--dim)}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:14px 16px;margin:0 0 12px}
+.row{display:flex;justify-content:space-between;gap:10px;align-items:flex-start;flex-wrap:wrap}
+.when{font:400 18px Georgia,serif}.tag{display:inline-block;font-size:12px;border:1px solid var(--line);border-radius:100px;padding:2px 10px;margin:6px 6px 0 0;color:var(--dim)}.tag.g{color:var(--soft);border-color:var(--gold)}
+.acts{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}
+.day{margin:0 0 18px}.dayhead{display:flex;justify-content:space-between;align-items:center;margin:0 0 8px;font:400 17px Georgia,serif}
+.chips{display:flex;flex-wrap:wrap;gap:8px}.chip.booked{background:var(--gold);color:var(--ink);border-color:var(--gold);cursor:default}.chip.closed{opacity:.45;text-decoration:line-through}
+.chip.held{border-style:dashed}
+input,select{width:100%;background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:11px 12px;margin:0 0 10px}
+label{display:block;font-size:13px;color:var(--dim);margin:0 0 4px}
+.msg{min-height:22px;font-size:14px;color:var(--soft);margin:8px 0}.msg.bad{color:#e58a8a}.empty{color:var(--dim);text-align:center;padding:30px 0}
+.lock{max-width:340px;margin:18vh auto 0;text-align:center}
+</style></head><body>
+<div class="wrap" id="app"></div>
+<script>
+const $ = (s) => document.querySelector(s);
+const esc = (t) => String(t == null ? '' : t).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+let key = localStorage.getItem('mtdesk') || '', D = null, tab = 'readings', msg = '', bad = false;
+
+async function api(action, body) {
+  const r = await fetch('/api/desk?action=' + action, { method: body ? 'POST' : 'GET', headers: { 'x-desk-key': key, 'Content-Type': 'application/json' }, body: body ? JSON.stringify(body) : undefined });
+  if (r.status === 401) { key = ''; localStorage.removeItem('mtdesk'); render(); throw new Error('Locked'); }
+  const j = await r.json(); if (!r.ok) throw new Error(j.error || 'Something went wrong');
+  return j;
+}
+async function load() { try { D = await api('overview'); render(); } catch (e) { if (e.message !== 'Locked') { msg = e.message; bad = true; render(); } } }
+async function act(action, body, ok) { try { await api(action, body); msg = ok || 'Done'; bad = false; await load(); } catch (e) { msg = e.message; bad = true; render(); } }
+
+const t12 = (t) => { const [h, m] = t.split(':'); const hh = +h; return (hh % 12 || 12) + ':' + m + ' ' + (hh < 12 ? 'AM' : 'PM'); };
+const dlabel = (d) => { if (d === D.today) return 'Tonight'; const t = new Date(D.today + 'T00:00:00Z'); t.setUTCDate(t.getUTCDate() + 1); if (d === t.toISOString().slice(0, 10)) return 'Tomorrow'; return new Date(d + 'T00:00:00Z').toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short', timeZone: 'UTC' }); };
+const slotById = (id) => D.slots.find((s) => s.id === id);
+const typeById = (id) => D.types.find((t) => t.id === id);
+const active = (b) => ['paid', 'pending'].includes(b.payment_status);
+
+function render() {
+  const app = $('#app');
+  if (!key) { app.innerHTML = '<div class="lock"><h1>The Midnight Desk</h1><p class="sub">Private. For you only.</p><input id="pw" type="password" placeholder="Your desk password" autocomplete="current-password"><button class="btn gold" id="go" style="width:100%">Enter</button><p class="msg bad" id="lm"></p></div>';
+    const go = () => { key = $('#pw').value.trim(); localStorage.setItem('mtdesk', key); load(); }; $('#go').onclick = go; $('#pw').onkeydown = (e) => e.key === 'Enter' && go(); return; }
+  if (!D) { app.innerHTML = '<p class="empty">Opening your desk…</p>'; return; }
+  app.innerHTML = '<h1>The Midnight Desk</h1><p class="sub">' + dlabel(D.today) + ' · India time</p>' +
+    '<div class="tabs">' + [['readings', 'Readings'], ['times', 'Open times'], ['prices', 'Prices'], ['add', 'Add a reading']].map(([k, n]) => '<button class="tab' + (tab === k ? ' on' : '') + '" data-t="' + k + '">' + n + '</button>').join('') + '<button class="btn quiet sm" id="out" style="margin-left:auto">Lock</button></div>' +
+    '<p class="msg' + (bad ? ' bad' : '') + '">' + esc(msg) + '</p><div id="body">' + (tab === 'readings' ? readings() : tab === 'times' ? times() : tab === 'prices' ? prices() : addForm()) + '</div>';
+  app.querySelectorAll('.tab').forEach((b) => b.onclick = () => { tab = b.dataset.t; msg = ''; render(); });
+  $('#out').onclick = () => { localStorage.removeItem('mtdesk'); key = ''; D = null; render(); };
+  wire();
+}
+
+function readings() {
+  const list = D.bookings.filter(active).map((b) => ({ b, s: slotById(b.slot_id) })).filter((x) => x.s).sort((x, y) => (x.s.slot_date + x.s.start_time).localeCompare(y.s.slot_date + y.s.start_time));
+  if (!list.length) return '<p class="empty">No upcoming readings yet. They will appear here the moment someone reserves.</p>';
+  return list.map(({ b, s }) => { const rt = typeById(b.reading_type_id) || {}; const paid = b.payment_status === 'paid';
+    return '<div class="card"><div class="row"><div><div class="when">' + dlabel(s.slot_date) + ' · ' + t12(s.start_time) + '</div><div>' + esc(b.client_name) + ' · ' + esc(rt.label || '') + ' · ' + s.duration_minutes + ' min</div></div></div>' +
+      '<span class="tag g">' + (b.contact_mode === 'meet' ? 'Google Meet audio' : 'Instagram audio' + (b.instagram_handle ? ' · @' + esc(b.instagram_handle) : '')) + '</span>' + (b.contact_mode === 'meet' ? '' : '<span class="tag ' + (b.ig_confirmed ? 'g' : '') + '">' + (b.ig_confirmed ? 'Instagram message received' : 'Waiting for their Instagram message') + '</span>') + '<span class="tag ' + (paid ? 'g' : '') + '">' + (paid ? 'Paid' : 'Awaiting payment') + ' · ' + esc((b.gateway || '').toUpperCase()) + '</span>' +
+      (b.booking_code ? '<span class="tag g">' + esc(b.booking_code) + '</span>' : '') + (b.topic ? '<span class="tag">' + esc(b.topic) + '</span>' : '') + (b.client_phone ? '<span class="tag">' + esc(b.client_phone) + '</span>' : '') + (b.client_email ? '<span class="tag">' + esc(b.client_email) + '</span>' : '') +
+      '<div class="acts">' + (paid ? '' : '<button class="btn sm gold" data-a="paid" data-id="' + b.id + '">Mark as paid</button>') + (b.contact_mode === 'meet' ? '<button class="btn sm" data-a="copy">Copy Meet link</button>' : '<button class="btn sm" data-a="ig" data-id="' + b.id + '" data-v="' + (b.ig_confirmed ? '' : '1') + '">' + (b.ig_confirmed ? 'Undo: message received' : 'They messaged on Instagram') + '</button>') +
+      '<button class="btn sm" data-a="move" data-id="' + b.id + '">Move</button><button class="btn sm quiet" data-a="cancel" data-id="' + b.id + '">Release this hour</button></div><div id="mv-' + b.id + '"></div></div>'; }).join('');
+}
+
+function slotState(s) {
+  if (s.status === 'open') return 'open'; if (s.status === 'held') return 'held';
+  const has = D.bookings.some((b) => b.slot_id === s.id && active(b));
+  return has ? 'booked' : 'closed';
+}
+function times() {
+  const days = {}; D.slots.forEach((s) => (days[s.slot_date] = days[s.slot_date] || []).push(s));
+  const keys = Object.keys(days).slice(0, 14);
+  const dur = D.types.map((t) => '<option value="' + t.duration_minutes + '">' + t.duration_minutes + ' min</option>').join('');
+  return '<p class="sub">Tap a time to close it, or tap a faded one to open it again. Gold times are booked.</p>' +
+    keys.map((d) => '<div class="day"><div class="dayhead"><span>' + dlabel(d) + '</span><span><button class="btn sm" data-a="closeDay" data-d="' + d + '">Close night</button> <button class="btn sm" data-a="openDay" data-d="' + d + '">Open night</button></span></div><div class="chips">' +
+      days[d].map((s) => { const st = slotState(s); return '<button class="chip ' + (st === 'booked' ? 'booked' : st === 'closed' ? 'closed' : st === 'held' ? 'held' : '') + '" data-a="toggle" data-st="' + st + '" data-id="' + s.id + '">' + t12(s.start_time) + ' · ' + s.duration_minutes + '</button>'; }).join('') + '</div></div>').join('') +
+    '<div class="card"><div class="when" style="margin-bottom:6px">Set your regular hours</div><p class="sub" style="margin:0 0 12px">Choose your nights and hours once. The website offers times inside them, for every reading length.</p><label>Nights</label><div class="chips" id="h-days" style="margin-bottom:12px">' + [[1,'Mon'],[2,'Tue'],[3,'Wed'],[4,'Thu'],[5,'Fri'],[6,'Sat'],[0,'Sun']].map(([n,l]) => '<button type="button" class="chip on" data-a="wd" data-n="' + n + '">' + l + '</button>').join('') + '</div><label>From</label><input type="time" id="h-start" value="20:00"><label>Until</label><input type="time" id="h-end" value="23:30"><label>A new hour starts every</label><select id="h-step"><option value="20">20 minutes</option><option value="30" selected>30 minutes</option><option value="45">45 minutes</option><option value="60">60 minutes</option></select><label>Reading lengths offered</label><div class="chips" id="h-durs" style="margin-bottom:12px">' + D.types.map((t) => '<button type="button" class="chip on" data-a="du" data-n="' + t.duration_minutes + '">' + t.duration_minutes + ' min</button>').join('') + '</div><label>How many days ahead</label><select id="h-ahead"><option value="7">1 week</option><option value="14" selected>2 weeks</option><option value="28">4 weeks</option></select><label style="display:flex;gap:10px;align-items:center;color:var(--bone)"><input type="checkbox" id="h-replace" style="width:auto;margin:0"> Replace the open hours already set for these nights</label><button class="btn gold" data-a="openHours" style="margin-top:12px">Open these hours</button></div>' +
+    '<div class="card"><div class="when" style="margin-bottom:10px">Add an extra hour</div><label>Date</label><input type="date" id="x-date" value="' + D.today + '"><label>Start time</label><input type="time" id="x-time" value="21:00"><label>Length</label><select id="x-dur">' + dur + '</select><button class="btn gold" data-a="addSlot">Add this hour</button></div>';
+}
+
+const ANGEL = (() => { const a = []; [1, 2, 3, 4, 5, 7, 8, 9].forEach((n) => a.push(+(n + '.' + n + n))); for (let n = 10; n <= 99; n++) a.push(+(n + '.' + n)); return a.sort((x, y) => x - y); })();
+const angel = (t) => ANGEL.find((x) => x >= t) || Math.ceil(t);
+function prices() {
+  const r = JSON.parse(localStorage.getItem('mtrates') || '{"usd":95,"eur":110,"gbp":129}');
+  const rows = D.types.map((t) => '<div class="card"><div class="when">' + esc(t.label) + ' · ' + t.duration_minutes + ' min</div><div class="row" style="margin-top:10px;gap:8px">' + ['inr', 'usd', 'eur', 'gbp'].map((c) => '<div style="flex:1;min-width:70px"><label>' + c.toUpperCase() + '</label><input type="number" step="0.01" data-p="' + t.id + ':' + c + '" value="' + (t['price_' + c] == null ? '' : t['price_' + c]) + '"></div>').join('') + '</div></div>').join('');
+  return '<p class="sub">Whatever you save here appears across the whole website, in every currency.</p>' + rows +
+    '<div class="card"><div class="when" style="margin-bottom:6px">Rates have moved? Get a fresh suggestion</div><p class="sub" style="margin:0 0 10px">Type how many rupees one dollar, euro and pound cost today. We add 7% and round up to the next angel number. You can still edit any number before saving.</p><div class="row" style="gap:8px">' +
+    ['usd', 'eur', 'gbp'].map((c) => '<div style="flex:1"><label>₹ per ' + c.toUpperCase() + '</label><input type="number" step="0.01" id="r-' + c + '" value="' + r[c] + '"></div>').join('') + '</div><button class="btn" data-a="suggest">Suggest prices</button></div>' +
+    '<button class="btn gold" data-a="savePrices">Save prices</button>';
+}
+
+function addForm() {
+  const rts = D.types.map((t) => '<option value="' + t.id + '">' + esc(t.label) + ' · ' + t.duration_minutes + ' min · ₹' + t.price_inr + '</option>').join('');
+  return '<div class="card"><label>Reading</label><select id="a-rt">' + rts + '</select><label>Time</label><select id="a-slot"></select><label>Name</label><input id="a-name" placeholder="Their name"><label>How will you speak?</label><select id="a-mode"><option value="instagram">Instagram audio call</option><option value="meet">Google Meet, audio only</option></select><div id="a-ig-w"><label>Instagram name</label><input id="a-ig" placeholder="@name"></div><label>Phone or email (optional)</label><input id="a-contact" placeholder="Optional"><label style="display:flex;gap:10px;align-items:center;color:var(--bone)"><input type="checkbox" id="a-paid" checked style="width:auto;margin:0"> Paid by UPI</label><button class="btn gold" data-a="addBooking" style="margin-top:12px">Save this reading</button></div>';
+}
+
+function fillSlots() {
+  const rt = typeById($('#a-rt').value); if (!rt) return;
+  const open = D.slots.filter((s) => s.status === 'open' && s.duration_minutes === rt.duration_minutes);
+  $('#a-slot').innerHTML = open.length ? open.map((s) => '<option value="' + s.id + '">' + dlabel(s.slot_date) + ' · ' + t12(s.start_time) + '</option>').join('') : '<option value="">No open times of this length</option>';
+}
+
+function wire() {
+  if (tab === 'add') { fillSlots(); $('#a-rt').onchange = fillSlots; $('#a-mode').onchange = () => { $('#a-ig-w').style.display = $('#a-mode').value === 'instagram' ? 'block' : 'none'; }; }
+  document.querySelectorAll('[data-a]').forEach((el) => el.onclick = () => {
+    const a = el.dataset.a, id = el.dataset.id;
+    if (a === 'paid') act('markPaid', { booking_id: id }, 'Marked as paid.');
+    else if (a === 'cancel') { if (confirm('Release this hour so someone else can book it?')) act('cancelBooking', { booking_id: id }, 'Hour released.'); }
+    else if (a === 'copy') { navigator.clipboard.writeText(D.meet); msg = 'Meet link copied.'; bad = false; render(); }
+    else if (a === 'move') {
+      const b = D.bookings.find((x) => x.id === id), cur = slotById(b.slot_id);
+      const opts = D.slots.filter((s) => s.status === 'open' && s.duration_minutes === cur.duration_minutes);
+      $('#mv-' + id).innerHTML = '<div style="margin-top:10px"><select id="mvs-' + id + '">' + opts.map((s) => '<option value="' + s.id + '">' + dlabel(s.slot_date) + ' · ' + t12(s.start_time) + '</option>').join('') + '</select><button class="btn sm gold" id="mvok-' + id + '">Move here</button></div>';
+      $('#mvok-' + id).onclick = () => act('moveBooking', { booking_id: id, new_slot_id: $('#mvs-' + id).value }, 'Reading moved.');
+    }
+    else if (a === 'toggle') { const st = el.dataset.st; if (st === 'open') act('closeSlots', { ids: [id] }, 'Time closed.'); else if (st === 'closed') act('openSlots', { ids: [id] }, 'Time opened.'); }
+    else if (a === 'closeDay') { if (confirm('Close every open time on this night?')) act('closeDay', { date: el.dataset.d }, 'Night closed.'); }
+    else if (a === 'openDay') act('openDay', { date: el.dataset.d }, 'Night opened.');
+    else if (a === 'ig') act('igConfirmed', { booking_id: id, value: el.dataset.v === '1' }, el.dataset.v === '1' ? 'Marked: their message has arrived.' : 'Undone.');
+    else if (a === 'wd' || a === 'du') el.classList.toggle('on');
+    else if (a === 'openHours') {
+      const pick = (sel) => [...document.querySelectorAll(sel + ' .chip.on')].map((c) => Number(c.dataset.n));
+      act('openHours', { weekdays: pick('#h-days'), durations: pick('#h-durs'), start: $('#h-start').value, end: $('#h-end').value, step: $('#h-step').value, days: $('#h-ahead').value, replace: $('#h-replace').checked }, 'Your hours are open on the website.');
+    }
+    else if (a === 'suggest') {
+      const rates = { usd: +$('#r-usd').value, eur: +$('#r-eur').value, gbp: +$('#r-gbp').value };
+      localStorage.setItem('mtrates', JSON.stringify(rates));
+      D.types.forEach((t) => {
+        const inr = +document.querySelector('[data-p="' + t.id + ':inr"]').value;
+        ['usd', 'eur', 'gbp'].forEach((c) => { if (rates[c] > 0 && inr > 0) document.querySelector('[data-p="' + t.id + ':' + c + '"]').value = angel(inr / rates[c] * 1.07).toFixed(2); });
+      });
+      msg = 'Suggestions filled in. Review them, then save.'; bad = false; $('.msg').textContent = msg;
+    }
+    else if (a === 'savePrices') {
+      const byId = {};
+      document.querySelectorAll('[data-p]').forEach((i) => { const [id, c] = i.dataset.p.split(':'); (byId[id] = byId[id] || { id })['price_' + c] = i.value; });
+      act('savePrices', { prices: Object.values(byId) }, 'Prices saved. They are live on the website now.');
+    }
+    else if (a === 'addSlot') act('addSlot', { date: $('#x-date').value, time: $('#x-time').value, duration: $('#x-dur').value }, 'Hour added.');
+    else if (a === 'addBooking') {
+      const c = $('#a-contact').value.trim();
+      act('addBooking', { reading_type_id: $('#a-rt').value, slot_id: $('#a-slot').value, client_name: $('#a-name').value.trim(), contact_mode: $('#a-mode').value, instagram_handle: $('#a-ig').value.trim(), client_email: c.includes('@') && !c.startsWith('@') ? c : '', client_phone: c.includes('@') ? '' : c, paid: $('#a-paid').checked }, 'Reading saved. That hour is now closed on the website.');
+      tab = 'readings';
+    }
+  });
+}
+if (key) load(); else render();
+</script></body></html>
