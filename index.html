@@ -860,7 +860,7 @@
         <div class="inr-row"><span class="inr cur-amt" data-slug="angel" data-inr="399" data-usd="5.55" data-eur="4.44" data-gbp="3.33"><span class="cur-symbol">₹</span><span class="cur-value">399</span></span></div>
         <div class="fx" data-fx></div>
         <p class="desc">Send us the number and one line about what is happening in your life. We tell you what it is asking of you.</p>
-        <a href="/quick.html?offer=angel" class="btn ghost">Send my number</a>
+        <a href="#reserve-panel" data-written="angel" class="btn ghost">Send my number</a>
       </div>
       <div class="price-card glass reveal">
         <div class="kicker">For the one question that will not rest</div>
@@ -869,7 +869,7 @@
         <div class="inr-row"><span class="inr cur-amt" data-slug="verdict" data-inr="499" data-usd="7.77" data-eur="5.55" data-gbp="4.44"><span class="cur-symbol">₹</span><span class="cur-value">499</span></span></div>
         <div class="fx" data-fx></div>
         <p class="desc">Type your question. Three cards are drawn for it, and you receive a clear, honest verdict in writing.</p>
-        <a href="/quick.html?offer=verdict" class="btn ghost">Ask my question</a>
+        <a href="#reserve-panel" data-written="verdict" class="btn ghost">Ask my question</a>
       </div>
     </div>
     <p class="sig-note" style="margin-top:26px;">Your words are read by us alone. If you would rather hear it spoken, the private live readings are just below.</p>
@@ -1007,7 +1007,7 @@
       </div>
 
       <div class="reserve-actions" style="margin-top:36px;">
-        <a id="reserveEmailBtn" href="mailto:readings@midnighttruth.com?subject=Reserve%20a%20Reading&body=I'd%20like%20to%20reserve%3A%0A(%20)%20One%20Question%20—%20%E2%82%B9999%0A(%20)%20Two%20Questions%20—%20%E2%82%B91%2C555%0A(%20)%20Three%E2%80%93Five%20Questions%20—%20%E2%82%B93%2C111%0A%0APreferred%20dates%2Ftimes%3A%0A" class="btn ghost">Prefer Email?</a>
+        <a id="reserveEmailBtn" href="mailto:readings@midnighttruth.com?subject=Reserve%20a%20reading" class="btn ghost">Prefer email</a>
         <a href="https://ig.me/m/midnighttruthco" target="_blank" rel="noopener" class="btn ghost">Message on Instagram</a>
       </div>
       <p class="reserve-note">Or reach us directly at <code>readings@midnighttruth.com</code> or on Instagram <code>@midnighttruthco</code>.</p>
@@ -1207,10 +1207,8 @@
         noteEl.textContent = `Your question: ${qLabel}. Choose the reading length that feels right, then a time.`;
         noteEl.classList.add('show');
       }
-      if(mailBtn){
-        const body = `I'd%20like%20to%20reserve%20a%20reading%20about%3A%20${card.dataset.question}%0A%0APreferred%20dates%2Ftimes%3A%0A`;
-        mailBtn.href = `mailto:readings@midnighttruth.com?subject=Reserve%20a%20Reading&body=${body}`;
-      }
+      window.mtTopicText = card.dataset.question || qLabel;
+      if (window.mtRefreshMail) window.mtRefreshMail();
       const w = document.getElementById('mt-booking-widget');
       if(w) w.scrollIntoView({ behavior:'smooth', block:'start' });
     });
@@ -1231,6 +1229,12 @@
       if (card) setTimeout(() => card.querySelector('.sig-ask').click(), 500);
     }
   } catch (err) {}
+
+  document.querySelectorAll('[data-written]').forEach((a) => a.addEventListener('click', (e) => {
+    e.preventDefault();
+    if (window.mtSelectWritten) window.mtSelectWritten(a.dataset.written);
+    else { const p = document.getElementById('reserve-panel'); if (p) p.scrollIntoView({ behavior: 'smooth', block: 'start' }); }
+  }));
 
   // Pricing-tier "Reserve This Reading" buttons -> same preselect behaviour
   document.querySelectorAll('.mt-price-cta').forEach(btn => {
@@ -1410,6 +1414,18 @@
   // ===== Currency toggle =====
   const CUR_SYMBOLS = {inr:'₹', usd:'$', eur:'€', gbp:'£'};
   const CUR_TAGS = {inr:'INR', usd:'USD', eur:'EUR', gbp:'GBP'};
+  // The email we open for people who prefer to write: short welcome, prices in their own currency.
+  window.mtRefreshMail = function (cur) {
+    const btn = document.getElementById('reserveEmailBtn');
+    if (!btn) return;
+    const on = document.querySelector('.cur-btn.active');
+    cur = cur || (on ? on.dataset.cur : 'inr');
+    const price = (mins) => { const a = document.querySelector('.cur-amt[data-rt="' + mins + '"]'); return a && a.dataset[cur] ? CUR_SYMBOLS[cur] + a.dataset[cur] + (cur === 'inr' ? '' : ' ' + CUR_TAGS[cur]) : ''; };
+    const L = ['Hello,', '', 'I would like to reserve a private reading with The Midnight Truth.', '', 'Please keep one:', '( ) One Question, 15 minutes, ' + price(15), '( ) Two Questions, 25 minutes, ' + price(25), '( ) Three to Five Questions, 40 minutes, ' + price(40)];
+    if (window.mtTopicText) L.push('', 'What I would like to ask about: ' + window.mtTopicText);
+    L.push('', 'Preferred days and times (and my country, so you can convert the time):', '', 'Thank you.');
+    btn.href = 'mailto:readings@midnighttruth.com?subject=' + encodeURIComponent('Reserve a reading') + '&body=' + encodeURIComponent(L.join('\n'));
+  };
   function renderFx(cur){
     document.querySelectorAll('[data-fx]').forEach(fx => {
       const row = fx.previousElementSibling, amt = row && row.querySelector('.cur-amt');
@@ -1430,11 +1446,12 @@
     document.querySelectorAll('.cur-tag-label').forEach(el => { el.textContent = CUR_TAGS[cur]; });
     document.querySelectorAll('.cur-select-mobile').forEach(sel => { sel.value = cur; });
     renderFx(cur);
+    if (window.mtRefreshMail) window.mtRefreshMail(cur);
   }
   document.querySelectorAll('.cur-btn').forEach(btn => {
     btn.addEventListener('click', () => applyCurrency(btn.dataset.cur));
   });
-  { const on = document.querySelector('.cur-btn.active'); renderFx(on ? on.dataset.cur : 'inr'); }
+  { const on = document.querySelector('.cur-btn.active'); renderFx(on ? on.dataset.cur : 'inr'); if (window.mtRefreshMail) window.mtRefreshMail(on ? on.dataset.cur : 'inr'); }
   document.querySelectorAll('.cur-select-mobile').forEach(sel => {
     sel.addEventListener('change', () => applyCurrency(sel.value));
   });

@@ -74,6 +74,8 @@
   var esc = function (t) { return String(t == null ? '' : t).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); };
   var tz = (Intl.DateTimeFormat().resolvedOptions().timeZone || ''), inIndia = /Calcutta|Kolkata/.test(tz);
   var dFmt = function (iso, zone) { var d = new Date(iso), o = zone ? { timeZone: zone } : {}; return d.toLocaleDateString('en-GB', Object.assign({ weekday: 'long', day: 'numeric', month: 'long' }, o)) + ', ' + d.toLocaleTimeString('en-GB', Object.assign({ hour: 'numeric', minute: '2-digit', hour12: true }, o)).replace(' am', ' AM').replace(' pm', ' PM'); };
+  var dDate = function (iso, zone) { return new Date(iso).toLocaleDateString('en-GB', Object.assign({ weekday: 'long', day: 'numeric', month: 'long' }, zone ? { timeZone: zone } : {})); };
+  var dTime = function (iso, zone) { return new Date(iso).toLocaleTimeString('en-GB', Object.assign({ hour: 'numeric', minute: '2-digit', hour12: true }, zone ? { timeZone: zone } : {})).replace(' am', ' AM').replace(' pm', ' PM'); };
   var toast = function (m) { var t = $('toast'); t.textContent = m; t.className = 'toast on'; setTimeout(function () { t.className = 'toast'; }, 2200); };
   var copy = function (txt) { try { navigator.clipboard.writeText(txt).then(function () { toast('Code copied'); }, function () { toast('Your code: ' + txt); }); } catch (e) { toast('Your code: ' + txt); } };
   var rv = function (html, i) { return '<div class="rv" style="animation-delay:' + (i * 0.12) + 's">' + html + '</div>'; };
@@ -85,12 +87,12 @@
     if (d.kind === 'live') {
       $('eyebrow').textContent = 'Confirmed'; $('title').textContent = 'Your hour is held';
       $('lead').outerHTML = '<p class="quote" id="lead">The cards are waiting. So is the truth.</p>';
-      var rows = row('Reading', esc(d.label), d.minutes + ' minutes') + row('When', esc(dFmt(d.start)), inIndia ? '' : 'India time · ' + esc(dFmt(d.start, 'Asia/Kolkata'))) + row('Reference', '<span class="code">' + esc(d.code) + '</span>');
+      var rows = row('Reading', esc(d.label), d.minutes + ' minutes') + row('When', esc(dDate(d.start)), esc(dTime(d.start)) + (inIndia ? '' : ' · your time<br>' + esc(dTime(d.start, 'Asia/Kolkata')) + ' India time')) + row('Reference', '<span class="code">' + esc(d.code) + '</span>');
       var end = new Date(new Date(d.start).getTime() + (d.minutes || 25) * 60000), z = function (x) { return x.toISOString().replace(/[-:]/g, '').replace(/\.\d{3}/, ''); };
       var cal = 'https://calendar.google.com/calendar/render?action=TEMPLATE&text=' + encodeURIComponent('The Midnight Truth · ' + d.label) + '&dates=' + z(new Date(d.start)) + '/' + z(end) + '&details=' + encodeURIComponent('Your private reading. Reference ' + d.code);
       var step = d.mode === 'meet'
         ? '<h2>Your private room</h2><p>At your hour, join us here, audio only. You may wait a moment while we let you in.</p><a class="btn" href="' + MEET + '" target="_blank" rel="noopener">Open Google Meet</a>'
-        : '<h2>One quiet last step</h2><p>Send us your reference on Instagram, so we know you are on your way. At your hour, we call you there.</p><button class="btn" id="ig" type="button">Copy my code and open Instagram</button>';
+        : '<h2>One quiet last step</h2><p>Send us your reference on Instagram, so we know you are on your way. At your hour, we call you there.</p><button class="btn" id="ig" type="button">Open Instagram</button><p class="note" style="margin-top:12px">Tapping it copies your code, so you can simply paste it into the message.</p>';
       $('out').innerHTML = '<div class="rule"></div>' + rv('<p class="lead">Your hour is set aside for you alone. Come as you are, with whatever is weighing on you, and we will sit with it together.</p>', 1) +
         rv('<div class="panel">' + rows + '</div>', 2) + rv('<div class="next">' + step + '</div>', 3) +
         rv('<div class="duo"><a class="btn ghost" href="' + cal + '" target="_blank" rel="noopener">Add to calendar</a><a class="btn ghost" href="/">Return home</a></div>', 4) +
@@ -101,7 +103,7 @@
       $('lead').outerHTML = '<p class="quote" id="lead">We will sit with it carefully.</p>';
       var way = d.delivery === 'instagram' ? 'as a message on Instagram' : d.delivery === 'whatsapp' ? 'on WhatsApp' : 'by email';
       var where = d.delivery === 'instagram' ? 'On Instagram' : d.delivery === 'whatsapp' ? 'On WhatsApp' : 'In your inbox';
-      var rows2 = row('Reading', esc(d.label)) + row('Arrives by', esc(dFmt(d.due)), (inIndia ? where : where + ' · India time ' + esc(dFmt(d.due, 'Asia/Kolkata')))) + row('Reference', '<span class="code">' + esc(d.code) + '</span>');
+      var rows2 = row('Reading', esc(d.label)) + row('Arrives by', esc(dDate(d.due)), esc(dTime(d.due)) + (inIndia ? '' : ' · your time') + '<br>' + where) + row('Reference', '<span class="code">' + esc(d.code) + '</span>');
       $('out').innerHTML = '<div class="rule"></div>' + rv('<p class="lead">Thank you for trusting us with this. Your written reading will reach you ' + way + ' within 24 hours.</p>', 1) + rv('<div class="panel">' + rows2 + '</div>', 2) +
         rv('<p class="note">' + (d.emailed ? 'A note has been sent to your inbox. ' : '') + (d.delivery === 'email' || !d.delivery ? 'If it does not appear, please look in your spam or promotions folder.' : 'Please keep your messages open, so it reaches you easily.') + '</p>', 3) + rv('<div style="margin-top:22px">' + home + '</div>', 4);
     }

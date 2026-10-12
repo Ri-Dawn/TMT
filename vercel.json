@@ -8,11 +8,11 @@
   "rewrites": [
     {
       "source": "/angel",
-      "destination": "/quick.html"
+      "destination": "/index.html"
     },
     {
       "source": "/verdict",
-      "destination": "/quick.html"
+      "destination": "/index.html"
     },
     {
       "source": "/ask/:slug",
